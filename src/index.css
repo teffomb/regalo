@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: theme('fontFamily.sans');
+  min-height: 100vh;
+  background: radial-gradient(circle at 60% 0%, #013220 70%, #800020 100%);
+  overflow-x: hidden;
+}

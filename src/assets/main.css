@@ -1,0 +1,85 @@
+@import './base.css';
+
+/* Reescritura completa del fondo y estilos base para apariencia navideña */
+
+:root{
+  --christmas-green: #0b6623;
+  --christmas-red: #c02626;
+  --gold: #f3c623;
+}
+
+/* Layout central */
+html, body, #app { height: 100%; }
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+  color: #222;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  background-color: #f6f6f4; /* fallback while bg-image loads */
+}
+
+#app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:100vh;
+  position:relative;
+  z-index: 10; /* sitúa el contenido sobre la capa de fondo */
+}
+
+/* Background image layer (la imagen se asigna en el inline style del componente App.vue)
+   Aquí añadimos la capa de overlay (degradado rojo/verde) y una viñeta para enfocar el panel. */
+.bg-image{
+  position:fixed;
+  inset:0;
+  z-index:0;
+  background-repeat:no-repeat;
+  background-size:cover;
+  background-position:center center;
+  will-change: transform, opacity;
+}
+
+/* overlay color tint + subtle vignette */
+.bg-image::before{
+  content: '';
+  position:absolute; inset:0; z-index:1; pointer-events:none;
+  background: linear-gradient(180deg, rgba(14,60,38,0.10) 0%, rgba(255,255,255,0.0) 30%, rgba(120,10,10,0.06) 100%);
+  mix-blend-mode: overlay;
+}
+.bg-image::after{
+  /* soft vignette for edges */
+  content: '';
+  position:absolute; inset:0; z-index:2; pointer-events:none;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,0.06) 100%);
+}
+
+/* Snow texture very subtle (overlay) */
+.bg-image .texture{ position:absolute; inset:0; background-image: radial-gradient(rgba(243,198,35,0.03) 1px, transparent 1px); background-size: 60px 60px; opacity:0.12; pointer-events:none }
+
+/* Ensure content above background */
+#app > * { position: relative; z-index: 10 }
+
+/* Small helpers */
+a, .green { color: var(--christmas-green); text-decoration:none }
+
+/* Panel (tarjeta central) improvements: more contrast over background */
+.card-panel{
+  background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,250,244,0.98));
+  border-radius: 18px;
+  padding: 1.4rem;
+  box-shadow: 0 28px 80px rgba(2,6,23,0.12);
+  border: 1px solid rgba(0,0,0,0.04);
+}
+
+/* Responsive small fixes */
+@media (max-width: 760px){
+  #app{ padding:1rem }
+  .card-panel{ width: 94% }
+}
+
+/* Accessibility: ensure readable links etc */
+:focus{ outline: 3px solid rgba(243,198,35,0.18); outline-offset:3px }
