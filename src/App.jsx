@@ -47,24 +47,133 @@ function GiftContentModal({ selectedGift, onBack }) {
   const [loadFailed, setLoadFailed] = useState(false);
   const [loadingVideo, setLoadingVideo] = useState(false);
   const videoRef = useRef(null);
+  const [resolveTrigger, setResolveTrigger] = useState(0);
 
   // Poster para video: si la ruta tiene '/public' la corregimos a la ruta en public root
   const posterSrc = selectedGift?.url ? selectedGift.url.replace(/^\/public/, '') : '/regalo.png';
 
   // Resetear estado cuando cambia el regalo seleccionado
   useEffect(() => {
-    setVideoSrc(selectedGift?.media || '');
-    setTryIndex(0);
-    setLoadFailed(false);
-    setLoadingVideo(!!selectedGift?.media);
-    // Si no logra cargar en X ms, permitimos que el spinner se oculte y el fallback aparezca
-    const t = setTimeout(() => {
-      if (selectedGift?.media) {
+    // Resolver la URL del video comprobando su disponibilidad en producción
+    const original = selectedGift?.media || '';
+    const alt1 = original.replace(/^\//, ''); // sin slash inicial
+    const alt2 = './' + alt1; // con ./
+    const alt3 = original.startsWith('/') ? original : '/' + original; // asegurando leading slash
+    const candidates = Array.from(new Set([original, alt1, alt2, alt3]));
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    async function findWorkingUrl() {
+      if (!original) {
+        setVideoSrc('');
+        setTryIndex(0);
+        setLoadFailed(false);
+        setLoadingVideo(false);
+        return;
+      }
+      setTryIndex(0);
+      setLoadFailed(false);
+      setLoadingVideo(true);
+
+      // En lugar de HEAD/Range (que puede fallar en plataformas como Vercel por rewrites),
+      // creamos un elemento <video> temporal y esperamos a 'loadedmetadata' / 'canplaythrough'.
+      // Esto deja que el navegador determine si la URL sirve media real.
+      const origin = typeof window !== 'undefined' && window.location ? window.location.origin : '';
+      // Construir lista de intentos priorizando rutas absolutas con origin (importante en Vercel)
+      const expanded = [];
+      for (const c of candidates) {
+        if (origin && !c.startsWith('http')) {
+          // Priorizar la variante con origin (https://mi-app/...)
+          expanded.push(`${origin}/${c.replace(/^\//, '')}`);
+          expanded.push(`${origin}${c}`);
+        }
+        // mantener también la variante relativa
+        expanded.push(c);
+        if (c.startsWith('http')) expanded.push(c);
+      }
+      const tryList = Array.from(new Set(expanded));
+
+      const tryLoadWithVideoElement = (url, timeoutMs = 4000) => new Promise((resolve) => {
+        let settled = false;
+        const temp = document.createElement('video');
+        temp.preload = 'metadata';
+        temp.muted = true;
+        temp.playsInline = true;
+        temp.src = url;
+        // Si carga metadata o puede reproducir, consideramos la URL válida
+        const onSuccess = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(true);
+        };
+        const onError = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(false);
+        };
+        const cleanup = () => {
+          temp.removeEventListener('loadedmetadata', onSuccess);
+          temp.removeEventListener('canplaythrough', onSuccess);
+          temp.removeEventListener('error', onError);
+          try { temp.src = ''; } catch (e) {}
+          try { clearTimeout(timer); } catch (e) {}
+        };
+        temp.addEventListener('loadedmetadata', onSuccess);
+        temp.addEventListener('canplaythrough', onSuccess);
+        temp.addEventListener('error', onError);
+        // timeout
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(false);
+        }, timeoutMs);
+      });
+
+      for (let i = 0; i < tryList.length && !cancelled; i++) {
+        const url = tryList[i];
+        try {
+          // Intentamos cargar con el elemento de video temporal
+          const ok = await tryLoadWithVideoElement(url, 3500);
+          if (ok) {
+            setVideoSrc(url);
+            setTryIndex(i);
+            setLoadFailed(false);
+            setLoadingVideo(false);
+            return;
+          }
+        } catch (e) {
+          // continuar
+        }
+      }
+
+      // si no encontramos ninguna ruta válida, marcamos fallo para mostrar fallback
+      if (!cancelled) {
+        setVideoSrc(original);
+        setTryIndex(candidates.length - 1);
+        setLoadFailed(true);
         setLoadingVideo(false);
       }
-    }, 8000);
-    return () => clearTimeout(t);
-  }, [selectedGift]);
+    }
+
+    findWorkingUrl();
+
+    // Timeout de seguridad: si tras X ms no hay resultado, mostrar fallback
+    const timeoutId = setTimeout(() => {
+      if (!cancelled && !videoRef.current) {
+        setLoadingVideo(false);
+      }
+    }, 10000);
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearTimeout(timeoutId);
+    };
+  }, [selectedGift, resolveTrigger]);
 
   // Forzar recarga del elemento <video> cuando cambia videoSrc
   useEffect(() => {
@@ -110,15 +219,16 @@ function GiftContentModal({ selectedGift, onBack }) {
                      <button
                        className="px-3 py-1 rounded bg-amber-600 text-white"
                        onClick={() => {
-                         // Intentar recargar manualmente
+                         // Intentar recargar manualmente: forzar re-resolve de la URL en producción
                          setLoadFailed(false);
                          setTryIndex(0);
-                         setVideoSrc(selectedGift.media || '');
+                         setVideoSrc('');
+                         setResolveTrigger((s) => s + 1);
                        }}
                      >Reintentar</button>
                      <a
                        className="px-3 py-1 rounded bg-slate-700 text-white"
-                       href={selectedGift.media}
+                       href={videoSrc || selectedGift.media}
                        target="_blank"
                        rel="noreferrer"
                      >Abrir en nueva pestaña</a>
