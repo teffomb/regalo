@@ -258,6 +258,103 @@ function GiftContentModal({ selectedGift, onBack }) {
     }
   }, [videoSrc]);
 
+  // Construir contenido del modal en una variable para evitar ternarios complejos en JSX
+  let modalContent = null;
+  if (selectedGift?.tipo === 'image') {
+    modalContent = (
+      <img
+        src={selectedGift.media}
+        alt={`Contenido de regalo ${selectedGift.id}`}
+        className={`rounded-xl w-full ${mediaSizeClass} object-cover drop-shadow-md animate-fadeIn`}
+      />
+    );
+  } else if (selectedGift?.tipo === 'video') {
+    if (selectedGift.media && selectedGift.media.endsWith('.mp4')) {
+      if (loadFailed) {
+        modalContent = (
+          <div className="w-full flex flex-col items-center justify-center p-6 text-center">
+            <p className="text-white mb-3">No se pudo cargar el video.</p>
+            <div className="flex gap-3">
+              <button
+                className="px-3 py-1 rounded bg-amber-600 text-white"
+                onClick={() => {
+                  setLoadFailed(false);
+                  setTryIndex(0);
+                  setVideoSrc('');
+                  setResolveTrigger((s) => s + 1);
+                }}
+              >Reintentar</button>
+              <a className="px-3 py-1 rounded bg-slate-700 text-white" href={videoSrc || selectedGift.media} target="_blank" rel="noreferrer">Abrir en nueva pestaña</a>
+              <button className="px-3 py-1 rounded bg-blue-600 text-white" onClick={openDirectVideo}>Ver directo</button>
+              <a className="px-3 py-1 rounded bg-indigo-600 text-white" href={`https://www.google.com/search?tbm=vid&q=${encodeURIComponent(videoSrc || selectedGift.media || '')}`} target="_blank" rel="noreferrer">Ver en Google</a>
+            </div>
+          </div>
+        );
+      } else {
+        modalContent = (
+          <div className="relative w-full">
+            {loadingVideo && (
+              <div className="absolute inset-0 flex items-center justify-center z-20">
+                <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+              </div>
+            )}
+            <video
+              ref={videoRef}
+              poster={posterAbs}
+              autoPlay
+              muted
+              controls
+              playsInline
+              preload="metadata"
+              loop
+              className={`rounded-xl w-full ${mediaSizeClass} bg-black shadow-sm object-contain`}
+              style={{ willChange: 'transform', backfaceVisibility: 'hidden', transform: 'translateZ(0)' }}
+              onLoadedData={() => { setLoadingVideo(false); setLoadFailed(false); }}
+              onCanPlayThrough={() => { setLoadingVideo(false); setLoadFailed(false); }}
+              onError={() => {
+                if (selectedGift?.id === 1) {
+                  setImageFallback(true);
+                  setLoadFailed(false);
+                  setLoadingVideo(false);
+                  return;
+                }
+                const original = selectedGift?.media || '';
+                const alt1 = original.replace(/^\//, '');
+                const alt2 = './' + alt1;
+                const alt3 = original.startsWith('/') ? original : '/' + original;
+                const candidates = Array.from(new Set([original, alt1, alt2, alt3]));
+                const nextIndex = tryIndex + 1;
+                if (nextIndex < candidates.length) {
+                  setTryIndex(nextIndex);
+                  setVideoSrc(candidates[nextIndex]);
+                } else {
+                  console.warn('Video load failed for', original, 'candidates:', candidates);
+                  setLoadFailed(true);
+                  setLoadingVideo(false);
+                }
+              }}
+            >
+              <source src={videoSrc} type="video/mp4" />
+              Tu navegador no soporta video HTML5.
+            </video>
+          </div>
+        );
+      }
+    } else {
+      modalContent = (
+        <iframe
+          src={selectedGift.media}
+          title={`Video YouTube Regalo ${selectedGift.id}`}
+          allow="autoplay; encrypted-media; picture-in-picture"
+          allowFullScreen
+          loading="lazy"
+          className={`rounded-xl w-full ${mediaSizeClass} bg-black shadow-sm object-contain`}
+          style={{ border: 0 }}
+        />
+      );
+    }
+  }
+
   // Puede renderizar image, video o lo que se asigne a media
   return (
     <motion.div
@@ -269,168 +366,25 @@ function GiftContentModal({ selectedGift, onBack }) {
     >
       <ChristmasLightsBorder />
       <div className={containerClass}>
-         {selectedGift.tipo === 'image' ? (
-           <img
-            src={selectedGift.media}
-            alt={`Contenido de regalo ${selectedGift.id}`}
-            className={`rounded-xl w-full ${mediaSizeClass} object-cover drop-shadow-md animate-fadeIn`}
-           />
-         ) : selectedGift.tipo === 'video' ? (
-           <div className="w-full flex items-center justify-center">
-             {selectedGift.media && selectedGift.media.endsWith('.mp4') ? (
-               loadFailed ? (
-                 <div className="w-full flex flex-col items-center justify-center p-6 text-center">
-                   <p className="text-white mb-3">No se pudo cargar el video.</p>
-                   <div className="flex gap-3">
-                     <button
-                       className="px-3 py-1 rounded bg-amber-600 text-white"
-                       onClick={() => {
-                         // Intentar recargar manualmente: forzar re-resolve de la URL en producción
-                         setLoadFailed(false);
-                         setTryIndex(0);
-                         setVideoSrc('');
-                         setResolveTrigger((s) => s + 1);
-                       }}
-                     >Reintentar</button>
-                    <a
-                      className="px-3 py-1 rounded bg-slate-700 text-white"
-                      href={videoSrc || selectedGift.media}
-                      target="_blank"
-                      rel="noreferrer"
-                    >Abrir en nueva pestaña</a>
-                    <button
-                      className="px-3 py-1 rounded bg-blue-600 text-white"
-                      onClick={openDirectVideo}
-                    >Ver directo</button>
-                    <a
-                      className="px-3 py-1 rounded bg-indigo-600 text-white"
-                      href={`https://www.google.com/search?tbm=vid&q=${encodeURIComponent(videoSrc || selectedGift.media || '')}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >Ver en Google</a>
-                   </div>
-                 </div>
-               ) : (
-               <div className="relative w-full">
-                 {loadingVideo && (
-                   <div className="absolute inset-0 flex items-center justify-center z-20">
-                     <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
-                   </div>
-                 )}
-                 <video
-                   ref={videoRef}
-                   poster={posterAbs}
-                   autoPlay
-                   muted
-                   controls
-                   playsInline
-                   preload="metadata"
-                   loop
-                   className={`rounded-xl w-full ${mediaSizeClass} bg-black shadow-sm object-contain`}
-                   // Forzamos capas compuestas para mejor rendimiento en GPU
-                   style={{ willChange: 'transform', backfaceVisibility: 'hidden', transform: 'translateZ(0)' }}
-                   onLoadedData={() => {
-                     setLoadingVideo(false);
-                     setLoadFailed(false);
-                   }}
-                   onCanPlayThrough={() => {
-                     setLoadingVideo(false);
-                     setLoadFailed(false);
-                   }}
-                   onError={() => {
-                     // Si falla en la carga, para el regalo 1 mostramos la imagen en lugar del video.
-                     if (selectedGift?.id === 1) {
-                       setImageFallback(true);
-                       setLoadFailed(false);
-                       setLoadingVideo(false);
-                       return;
-                     }
-                     // Generar alternativas de ruta y reintentar para los demás
-                     const original = selectedGift?.media || '';
-                     const alt1 = original.replace(/^\//, ''); // sin slash inicial
-                     const alt2 = './' + alt1; // con ./
-                     const alt3 = original.startsWith('/') ? original : '/' + original; // asegurando leading slash
-                     const candidates = Array.from(new Set([original, alt1, alt2, alt3]));
-                     const nextIndex = tryIndex + 1;
-                     if (nextIndex < candidates.length) {
-                       setTryIndex(nextIndex);
-                       setVideoSrc(candidates[nextIndex]);
-                     } else {
-                       console.warn('Video load failed for', original, 'candidates:', candidates);
-                       setLoadFailed(true);
-                       setLoadingVideo(false);
-                     }
-                   }}
-                 >
-                   {/* Usar <source> para mayor compatibilidad y para que cambiar src reprocese la carga */}
-                   <source src={videoSrc} type="video/mp4" />
-                   Tu navegador no soporta video HTML5.
-                 </video>
-               </div>
-               ) : (
-               <div className="w-full flex flex-col items-center justify-center p-6 text-center">
-                 <p className="text-white mb-3">No se pudo cargar el video.</p>
-                 <div className="flex gap-3">
-                   <button
-                     className="px-3 py-1 rounded bg-amber-600 text-white"
-                     onClick={() => {
-                       // Intentar recargar manualmente: forzar re-resolve de la URL en producción
-                       setLoadFailed(false);
-                       setTryIndex(0);
-                       setVideoSrc('');
-                       setResolveTrigger((s) => s + 1);
-                     }}
-                   >Reintentar</button>
-                  <a
-                    className="px-3 py-1 rounded bg-slate-700 text-white"
-                    href={videoSrc || selectedGift.media}
-                    target="_blank"
-                    rel="noreferrer"
-                  >Abrir en nueva pestaña</a>
-                  <button
-                    className="px-3 py-1 rounded bg-blue-600 text-white"
-                    onClick={openDirectVideo}
-                  >Ver directo</button>
-                  <a
-                    className="px-3 py-1 rounded bg-indigo-600 text-white"
-                    href={`https://www.google.com/search?tbm=vid&q=${encodeURIComponent(videoSrc || selectedGift.media || '')}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >Ver en Google</a>
-                 </div>
-               </div>
-               )
-             ) : (
-               <iframe
-                 src={selectedGift.media}
-                 title={`Video YouTube Regalo ${selectedGift.id}`}
-                 allow="autoplay; encrypted-media; picture-in-picture"
-                 allowFullScreen
-                 loading="lazy"
-                 className={`rounded-xl w-full ${mediaSizeClass} bg-black shadow-sm object-contain`}
-                 style={{ border: 0 }}
-               />
-             )}
-           </div>
-         ) : null}
-+        {imageFallback && (
-+          <div className="w-full flex items-center justify-center">
-+            <img src={posterAbs || '/regalo.png'} alt={`Contenido del regalo ${selectedGift?.id}`} className={`rounded-xl w-full ${mediaSizeClass} object-contain`} />
-+          </div>
-+        )}
-         {/* Botón de volver */}
-         <motion.button
-           className="mt-3 px-3 py-1.5 bg-gradient-to-br from-bosque to-borgo rounded-full shadow-lg text-sm font-script text-white select-none active:scale-90 focus:outline-gold-glow/70 focus:outline-2 focus:outline-offset-4"
-           whileHover={{ scale: 1.06, rotate: 2 }}
-           whileTap={{ scale: 0.97, rotate: -3 }}
-           transition={{ type:'spring', stiffness: 380, damping: 18 }}
-           onClick={onBack}
-         >
-           Volver
-         </motion.button>
-       </div>
-     </motion.div>
-   );
+        {modalContent}
+        {imageFallback && (
+          <div className="w-full flex items-center justify-center">
+            <img src={posterAbs || '/regalo.png'} alt={`Contenido del regalo ${selectedGift?.id}`} className={`rounded-xl w-full ${mediaSizeClass} object-contain`} />
+          </div>
+        )}
+        {/* Botón de volver */}
+        <motion.button
+          className="mt-3 px-3 py-1.5 bg-gradient-to-br from-bosque to-borgo rounded-full shadow-lg text-sm font-script text-white select-none active:scale-90 focus:outline-gold-glow/70 focus:outline-2 focus:outline-offset-4"
+          whileHover={{ scale: 1.06, rotate: 2 }}
+          whileTap={{ scale: 0.97, rotate: -3 }}
+          transition={{ type:'spring', stiffness: 380, damping: 18 }}
+          onClick={onBack}
+        >
+          Volver
+        </motion.button>
+      </div>
+    </motion.div>
+  );
 }
 
 export default function App() {
