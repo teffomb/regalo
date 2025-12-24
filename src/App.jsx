@@ -52,6 +52,27 @@ function GiftContentModal({ selectedGift, onBack }) {
   // Poster para video: si la ruta tiene '/public' la corregimos a la ruta en public root
   const posterSrc = selectedGift?.url ? selectedGift.url.replace(/^\/public/, '') : '/regalo.png';
 
+  // Intentar abrir el video directo en nueva pestaña descargándolo como Blob (fallback)
+  const openDirectVideo = async () => {
+    const url = videoSrc || selectedGift?.media;
+    if (!url) {
+      window.open('https://www.google.com/search?q=' + encodeURIComponent(selectedGift?.media || ''), '_blank');
+      return;
+    }
+    try {
+      const res = await fetch(url, { method: 'GET' });
+      if (!res.ok) throw new Error('no se pudo obtener el recurso');
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+      // liberar después de un tiempo
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch (e) {
+      // Si falla, abrir búsqueda en Google
+      window.open('https://www.google.com/search?q=' + encodeURIComponent(url), '_blank');
+    }
+  };
+
   // Resetear estado cuando cambia el regalo seleccionado
   useEffect(() => {
     // Resolver la URL del video comprobando su disponibilidad en producción
@@ -226,12 +247,22 @@ function GiftContentModal({ selectedGift, onBack }) {
                          setResolveTrigger((s) => s + 1);
                        }}
                      >Reintentar</button>
-                     <a
-                       className="px-3 py-1 rounded bg-slate-700 text-white"
-                       href={videoSrc || selectedGift.media}
-                       target="_blank"
-                       rel="noreferrer"
-                     >Abrir en nueva pestaña</a>
+                    <a
+                      className="px-3 py-1 rounded bg-slate-700 text-white"
+                      href={videoSrc || selectedGift.media}
+                      target="_blank"
+                      rel="noreferrer"
+                    >Abrir en nueva pestaña</a>
+                    <button
+                      className="px-3 py-1 rounded bg-blue-600 text-white"
+                      onClick={openDirectVideo}
+                    >Ver directo</button>
+                    <a
+                      className="px-3 py-1 rounded bg-indigo-600 text-white"
+                      href={`https://www.google.com/search?tbm=vid&q=${encodeURIComponent(videoSrc || selectedGift.media || '')}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >Ver en Google</a>
                    </div>
                  </div>
                ) : (
