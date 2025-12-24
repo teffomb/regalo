@@ -43,6 +43,7 @@ function GiftContentModal({ selectedGift, onBack }) {
 
   // Estados para manejo robusto de carga de video: reintentos y fallback
   const [videoSrc, setVideoSrc] = useState(selectedGift?.media || '');
+  const [imageFallback, setImageFallback] = useState(false);
   const [tryIndex, setTryIndex] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
   const [loadingVideo, setLoadingVideo] = useState(false);
@@ -51,6 +52,9 @@ function GiftContentModal({ selectedGift, onBack }) {
 
   // Poster para video: si la ruta tiene '/public' la corregimos a la ruta en public root
   const posterSrc = selectedGift?.url ? selectedGift.url.replace(/^\/public/, '') : '/regalo.png';
+  // Poster absoluto (usar origin en producción para evitar problemas de rutas relativas)
+  const origin = typeof window !== 'undefined' && window.location ? window.location.origin : '';
+  const posterAbs = posterSrc && origin ? `${origin}${posterSrc.startsWith('/') ? posterSrc : '/' + posterSrc}` : posterSrc;
 
   // Intentar abrir el video directo en nueva pestaña descargándolo como Blob (fallback)
   const openDirectVideo = async () => {
@@ -76,6 +80,42 @@ function GiftContentModal({ selectedGift, onBack }) {
   // Resetear estado cuando cambia el regalo seleccionado
   useEffect(() => {
     const original = selectedGift?.media || '';
+    // Si es el regalo 1 forzamos la URL absoluta a videoprincipal y salteamos las comprobaciones.
+    try { console.debug('[video-resolve] selectedGift', selectedGift); } catch(e) {}
+    if (selectedGift?.id === 1) {
+      const originLocal = typeof window !== 'undefined' && window.location ? window.location.origin : '';
+      const forced = originLocal ? `${originLocal}/videoprincipal.mp4` : '/videoprincipal.mp4';
+      // Intentar comprobar el recurso primero con HEAD (con timeout) para detectar rewrites o bloqueos
+      (async () => {
+        try {
+          const ctrl = new AbortController();
+          const to = setTimeout(() => ctrl.abort(), 4000);
+          const res = await fetch(forced, { method: 'HEAD', signal: ctrl.signal });
+          clearTimeout(to);
+          const ct = res.headers.get('content-type') || '';
+          if (res.ok && ct.includes('video')) {
+            setVideoSrc(forced);
+            setTryIndex(0);
+            setLoadFailed(false);
+            setLoadingVideo(true);
+            try { console.debug('[video-resolve] regalo 1 OK ->', forced, 'CT=', ct); } catch (e) {}
+          } else {
+            // Si no devuelve video o no ok, activamos fallback a imagen
+            try { console.warn('[video-resolve] regalo 1 HEAD no ok or not video', forced, res.status, ct); } catch(e) {}
+            setImageFallback(true);
+            setLoadFailed(false);
+            setLoadingVideo(false);
+          }
+        } catch (e) {
+          try { console.warn('[video-resolve] regalo 1 HEAD failed', forced, e && e.name); } catch(e) {}
+          setImageFallback(true);
+          setLoadFailed(false);
+          setLoadingVideo(false);
+        }
+      })();
+      // Salimos de la flow principal para que no se ejecute la detección por defecto
+      return () => {};
+    }
     // Forzar asignación inmediata para evitar usar una ruta cacheada previa
     setVideoSrc(original);
     setLoadFailed(false);
@@ -229,7 +269,7 @@ function GiftContentModal({ selectedGift, onBack }) {
     >
       <ChristmasLightsBorder />
       <div className={containerClass}>
-         {(selectedGift.tipo === 'image' || selectedGift?.id === 1) ? (
+         {selectedGift.tipo === 'image' ? (
            <img
             src={selectedGift.media}
             alt={`Contenido de regalo ${selectedGift.id}`}
@@ -279,7 +319,7 @@ function GiftContentModal({ selectedGift, onBack }) {
                  )}
                  <video
                    ref={videoRef}
-                   poster={posterSrc}
+                   poster={posterAbs}
                    autoPlay
                    muted
                    controls
@@ -298,7 +338,14 @@ function GiftContentModal({ selectedGift, onBack }) {
                      setLoadFailed(false);
                    }}
                    onError={() => {
-                     // Generar alternativas de ruta y reintentar
+                     // Si falla en la carga, para el regalo 1 mostramos la imagen en lugar del video.
+                     if (selectedGift?.id === 1) {
+                       setImageFallback(true);
+                       setLoadFailed(false);
+                       setLoadingVideo(false);
+                       return;
+                     }
+                     // Generar alternativas de ruta y reintentar para los demás
                      const original = selectedGift?.media || '';
                      const alt1 = original.replace(/^\//, ''); // sin slash inicial
                      const alt2 = './' + alt1; // con ./
@@ -320,6 +367,38 @@ function GiftContentModal({ selectedGift, onBack }) {
                    Tu navegador no soporta video HTML5.
                  </video>
                </div>
+               ) : (
+               <div className="w-full flex flex-col items-center justify-center p-6 text-center">
+                 <p className="text-white mb-3">No se pudo cargar el video.</p>
+                 <div className="flex gap-3">
+                   <button
+                     className="px-3 py-1 rounded bg-amber-600 text-white"
+                     onClick={() => {
+                       // Intentar recargar manualmente: forzar re-resolve de la URL en producción
+                       setLoadFailed(false);
+                       setTryIndex(0);
+                       setVideoSrc('');
+                       setResolveTrigger((s) => s + 1);
+                     }}
+                   >Reintentar</button>
+                  <a
+                    className="px-3 py-1 rounded bg-slate-700 text-white"
+                    href={videoSrc || selectedGift.media}
+                    target="_blank"
+                    rel="noreferrer"
+                  >Abrir en nueva pestaña</a>
+                  <button
+                    className="px-3 py-1 rounded bg-blue-600 text-white"
+                    onClick={openDirectVideo}
+                  >Ver directo</button>
+                  <a
+                    className="px-3 py-1 rounded bg-indigo-600 text-white"
+                    href={`https://www.google.com/search?tbm=vid&q=${encodeURIComponent(videoSrc || selectedGift.media || '')}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >Ver en Google</a>
+                 </div>
+               </div>
                )
              ) : (
                <iframe
@@ -334,6 +413,11 @@ function GiftContentModal({ selectedGift, onBack }) {
              )}
            </div>
          ) : null}
++        {imageFallback && (
++          <div className="w-full flex items-center justify-center">
++            <img src={posterAbs || '/regalo.png'} alt={`Contenido del regalo ${selectedGift?.id}`} className={`rounded-xl w-full ${mediaSizeClass} object-contain`} />
++          </div>
++        )}
          {/* Botón de volver */}
          <motion.button
            className="mt-3 px-3 py-1.5 bg-gradient-to-br from-bosque to-borgo rounded-full shadow-lg text-sm font-script text-white select-none active:scale-90 focus:outline-gold-glow/70 focus:outline-2 focus:outline-offset-4"
