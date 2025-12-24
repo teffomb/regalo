@@ -75,8 +75,13 @@ function GiftContentModal({ selectedGift, onBack }) {
 
   // Resetear estado cuando cambia el regalo seleccionado
   useEffect(() => {
-    // Resolver la URL del video comprobando su disponibilidad en producción
     const original = selectedGift?.media || '';
+    // Forzar asignación inmediata para evitar usar una ruta cacheada previa
+    setVideoSrc(original);
+    setLoadFailed(false);
+    // Log para depuración: mostrar qué URL se usará para este regalo
+    try { console.debug('[video-resolve] regalo', selectedGift?.id, '->', original); } catch(e) {}
+
     const alt1 = original.replace(/^\//, ''); // sin slash inicial
     const alt2 = './' + alt1; // con ./
     const alt3 = original.startsWith('/') ? original : '/' + original; // asegurando leading slash
@@ -224,7 +229,7 @@ function GiftContentModal({ selectedGift, onBack }) {
     >
       <ChristmasLightsBorder />
       <div className={containerClass}>
-         {selectedGift.tipo === 'image' ? (
+         {(selectedGift.tipo === 'image' || selectedGift?.id === 1) ? (
            <img
             src={selectedGift.media}
             alt={`Contenido de regalo ${selectedGift.id}`}
