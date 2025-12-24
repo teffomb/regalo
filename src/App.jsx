@@ -31,8 +31,18 @@ function GiftGridView({ onGiftSelect }) {
 
 function GiftContentModal({ selectedGift, onBack }) {
   // Mejora visual: modal más sutil y responsive, media con aspect-ratio y anchuras responsivas
-  const containerClass = 'relative flex flex-col items-center justify-center gap-4 bg-[#07110d]/70 backdrop-blur-sm rounded-2xl px-6 py-6 sm:px-8 sm:py-8 max-w-[95vw] sm:max-w-[720px] md:max-w-[920px] lg:max-w-[1100px] w-[90vw] max-h-[90vh] shadow-xl drop-shadow-2xl ring-1 ring-yellow-600/20 overflow-hidden z-50';
-  const mediaSizeClass = 'w-full aspect-video max-h-[80vh]';
+  // Detectamos si el contenido es video para ajustar el contenedor y evitar efectos pesados que provoquen lag
+  const isVideo = selectedGift?.tipo === 'video';
+  const containerClass = isVideo
+    ? 'relative flex flex-col items-center justify-center gap-3 bg-black/80 rounded-xl px-4 py-4 sm:px-6 sm:py-6 w-[92vw] sm:w-[80vw] max-w-[920px] max-h-[88vh] overflow-hidden z-50'
+    : 'relative flex flex-col items-center justify-center gap-4 bg-[#07110d]/70 backdrop-blur-sm rounded-2xl px-6 py-6 sm:px-8 sm:py-8 max-w-[95vw] sm:max-w-[720px] md:max-w-[920px] lg:max-w-[1100px] w-[90vw] max-h-[90vh] shadow-xl drop-shadow-2xl ring-1 ring-yellow-600/20 overflow-hidden z-50';
+
+  // Reducimos la altura máxima y limitamos el ancho del reproductor para evitar escalado excesivo
+  // Usamos object-contain para evitar que el video se estire y max-height menor para que no quede "lag" visual
+  const mediaSizeClass = 'w-full max-w-[900px] sm:max-w-[720px] md:max-w-[920px] lg:max-w-[1100px] aspect-video max-h-[60vh]';
+
+  // Poster para video: si la ruta tiene '/public' la corregimos a la ruta en public root
+  const posterSrc = selectedGift?.url ? selectedGift.url.replace(/^\/public/, '') : '/regalo.png';
 
   // Puede renderizar image, video o lo que se asigne a media
   return (
@@ -56,10 +66,16 @@ function GiftContentModal({ selectedGift, onBack }) {
              {selectedGift.media && selectedGift.media.endsWith('.mp4') ? (
                <video
                  src={selectedGift.media}
+                 poster={posterSrc}
                  autoPlay
                  muted
                  controls
-                 className={`rounded-xl w-full ${mediaSizeClass} bg-black shadow-2xl object-cover`}
+                 playsInline
+                 preload="metadata"
+                 loop
+                 className={`rounded-xl w-full ${mediaSizeClass} bg-black shadow-sm object-contain`}
+                 // Forzamos capas compuestas para mejor rendimiento en GPU
+                 style={{ willChange: 'transform', backfaceVisibility: 'hidden', transform: 'translateZ(0)' }}
                />
              ) : (
                <iframe
@@ -67,7 +83,8 @@ function GiftContentModal({ selectedGift, onBack }) {
                  title={`Video YouTube Regalo ${selectedGift.id}`}
                  allow="autoplay; encrypted-media; picture-in-picture"
                  allowFullScreen
-                 className={`rounded-xl w-full ${mediaSizeClass} bg-black shadow-2xl`}
+                 loading="lazy"
+                 className={`rounded-xl w-full ${mediaSizeClass} bg-black shadow-sm object-contain`}
                  style={{ border: 0 }}
                />
              )}
