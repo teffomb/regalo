@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { giftsConfig } from "./giftsConfig";
 import AnimatedHeader from "./components/AnimatedHeader";
@@ -41,8 +41,47 @@ function GiftContentModal({ selectedGift, onBack }) {
   // Usamos object-contain para evitar que el video se estire y max-height menor para que no quede "lag" visual
   const mediaSizeClass = 'w-full max-w-[900px] sm:max-w-[720px] md:max-w-[920px] lg:max-w-[1100px] aspect-video max-h-[60vh]';
 
+  // Estados para manejo robusto de carga de video: reintentos y fallback
+  const [videoSrc, setVideoSrc] = useState(selectedGift?.media || '');
+  const [tryIndex, setTryIndex] = useState(0);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadingVideo, setLoadingVideo] = useState(false);
+  const videoRef = useRef(null);
+
   // Poster para video: si la ruta tiene '/public' la corregimos a la ruta en public root
   const posterSrc = selectedGift?.url ? selectedGift.url.replace(/^\/public/, '') : '/regalo.png';
+
+  // Resetear estado cuando cambia el regalo seleccionado
+  useEffect(() => {
+    setVideoSrc(selectedGift?.media || '');
+    setTryIndex(0);
+    setLoadFailed(false);
+    setLoadingVideo(!!selectedGift?.media);
+    // Si no logra cargar en X ms, permitimos que el spinner se oculte y el fallback aparezca
+    const t = setTimeout(() => {
+      if (selectedGift?.media) {
+        setLoadingVideo(false);
+      }
+    }, 8000);
+    return () => clearTimeout(t);
+  }, [selectedGift]);
+
+  // Forzar recarga del elemento <video> cuando cambia videoSrc
+  useEffect(() => {
+    if (!videoRef.current) return;
+    try {
+      // Llamamos load para que el elemento reprocesa el <source>
+      videoRef.current.load();
+      // Intentamos play (silenciado) para forzar buffering en navegadores que lo permiten
+      const playPromise = videoRef.current.play && videoRef.current.play();
+      if (playPromise && typeof playPromise.then === 'function') {
+        playPromise.catch(() => { /* autoplay puede fallar si no está permitido */ });
+      }
+      setLoadingVideo(true);
+    } catch (e) {
+      // ignorar
+    }
+  }, [videoSrc]);
 
   // Puede renderizar image, video o lo que se asigne a media
   return (
@@ -64,19 +103,78 @@ function GiftContentModal({ selectedGift, onBack }) {
          ) : selectedGift.tipo === 'video' ? (
            <div className="w-full flex items-center justify-center">
              {selectedGift.media && selectedGift.media.endsWith('.mp4') ? (
-               <video
-                 src={selectedGift.media}
-                 poster={posterSrc}
-                 autoPlay
-                 muted
-                 controls
-                 playsInline
-                 preload="metadata"
-                 loop
-                 className={`rounded-xl w-full ${mediaSizeClass} bg-black shadow-sm object-contain`}
-                 // Forzamos capas compuestas para mejor rendimiento en GPU
-                 style={{ willChange: 'transform', backfaceVisibility: 'hidden', transform: 'translateZ(0)' }}
-               />
+               loadFailed ? (
+                 <div className="w-full flex flex-col items-center justify-center p-6 text-center">
+                   <p className="text-white mb-3">No se pudo cargar el video.</p>
+                   <div className="flex gap-3">
+                     <button
+                       className="px-3 py-1 rounded bg-amber-600 text-white"
+                       onClick={() => {
+                         // Intentar recargar manualmente
+                         setLoadFailed(false);
+                         setTryIndex(0);
+                         setVideoSrc(selectedGift.media || '');
+                       }}
+                     >Reintentar</button>
+                     <a
+                       className="px-3 py-1 rounded bg-slate-700 text-white"
+                       href={selectedGift.media}
+                       target="_blank"
+                       rel="noreferrer"
+                     >Abrir en nueva pestaña</a>
+                   </div>
+                 </div>
+               ) : (
+               <div className="relative w-full">
+                 {loadingVideo && (
+                   <div className="absolute inset-0 flex items-center justify-center z-20">
+                     <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                   </div>
+                 )}
+                 <video
+                   ref={videoRef}
+                   poster={posterSrc}
+                   autoPlay
+                   muted
+                   controls
+                   playsInline
+                   preload="metadata"
+                   loop
+                   className={`rounded-xl w-full ${mediaSizeClass} bg-black shadow-sm object-contain`}
+                   // Forzamos capas compuestas para mejor rendimiento en GPU
+                   style={{ willChange: 'transform', backfaceVisibility: 'hidden', transform: 'translateZ(0)' }}
+                   onLoadedData={() => {
+                     setLoadingVideo(false);
+                     setLoadFailed(false);
+                   }}
+                   onCanPlayThrough={() => {
+                     setLoadingVideo(false);
+                     setLoadFailed(false);
+                   }}
+                   onError={() => {
+                     // Generar alternativas de ruta y reintentar
+                     const original = selectedGift?.media || '';
+                     const alt1 = original.replace(/^\//, ''); // sin slash inicial
+                     const alt2 = './' + alt1; // con ./
+                     const alt3 = original.startsWith('/') ? original : '/' + original; // asegurando leading slash
+                     const candidates = Array.from(new Set([original, alt1, alt2, alt3]));
+                     const nextIndex = tryIndex + 1;
+                     if (nextIndex < candidates.length) {
+                       setTryIndex(nextIndex);
+                       setVideoSrc(candidates[nextIndex]);
+                     } else {
+                       console.warn('Video load failed for', original, 'candidates:', candidates);
+                       setLoadFailed(true);
+                       setLoadingVideo(false);
+                     }
+                   }}
+                 >
+                   {/* Usar <source> para mayor compatibilidad y para que cambiar src reprocese la carga */}
+                   <source src={videoSrc} type="video/mp4" />
+                   Tu navegador no soporta video HTML5.
+                 </video>
+               </div>
+               )
              ) : (
                <iframe
                  src={selectedGift.media}
